@@ -869,7 +869,19 @@ public class Parser {
                 if (!parameters.isEmpty()){
                     for (String param : parameters.split(",")){
                         param = param.trim();
+                        
                         idx = param.lastIndexOf(" ");
+                        if (idx==-1){
+                          //Check if we have a spread operator
+                            idx = param.indexOf("...");
+                            if (idx>-1){
+                                String t = param.substring(0, idx);
+                                String n = param.substring(idx+3);
+                                param = t + "... " + n;
+                                idx = param.indexOf(" ");
+                            }
+                        }
+                        
                         String paramName = param.substring(idx).trim();
                         String paramType = param.substring(0, idx).trim();
                         idx = paramType.lastIndexOf(" ");
