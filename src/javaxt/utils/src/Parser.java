@@ -130,6 +130,18 @@ public class Parser {
 
             }
             
+            else if (c=='"' || c=='\''){
+                
+                if (insideComment){
+                    currComment.append(c);
+                }
+                else{                    
+                    String quote = readQuote(s, i, c);
+                    code.append(quote);
+                    i = i+quote.length();
+                }
+            }
+
             else{
                 if (insideComment){
                     currComment.append(c);
@@ -167,7 +179,7 @@ public class Parser {
                         if (word!=null && !word.isBlank()){
 
                             if (ext.equals("java")){
-                                
+                            
                                 if (word.equals("package")){
                                     String[] arr = readFunction(s, i);
                                     String fn = arr[0].replace(" ", "");
@@ -261,7 +273,16 @@ public class Parser {
                                         String raw = arr[1];
                                         char lastChar = s.charAt(i+raw.length());
                                         if (lastChar=='{'){
+                                            //console.log(fn);
+                                            
+                                          //Parse method and add to class
                                             currClass.addMember(parseMethod(fn, comment, ext));
+                                            
+                                          //Move past the function
+                                            int end = getEndBacket(s, i);
+                                            //console.log(s.substring(i, end));
+                                            
+                                            if (end>-1) i = end;
                                         }
 
                                     }
@@ -522,6 +543,41 @@ public class Parser {
     
     
   //**************************************************************************
+  //** readQuote
+  //**************************************************************************
+  /** Returns a string encapsulated by either a single or double quote, 
+   *  starting at a given index
+   */
+    private static String readQuote(String s, int i, char t){ 
+        
+        StringBuilder str = new StringBuilder();
+        str.append(s.charAt(i));
+        boolean escaped = false;
+        for (int x=i+1; x<s.length(); x++){
+            char q = s.charAt(x);
+            str.append(q);
+
+            if (q==t){
+                if (!escaped){
+                    break;
+                }
+                else{
+                    escaped = false;
+                }
+            }
+            else if (q=='\\'){
+                escaped = !escaped;
+            }
+            else{
+                escaped = false;
+            }
+        }
+        
+        return str.toString();
+    }
+    
+    
+  //**************************************************************************
   //** readFunction
   //**************************************************************************
   /** Used to return a class definition, property, or method starting at a 
@@ -607,6 +663,14 @@ public class Parser {
                 i = i+2;
                 if (insideComment){
                     insideComment = false;
+                }
+            }
+            
+            else if (c=='"' || c=='\''){
+                
+                if (!insideComment){
+                    String quote = readQuote(s, i, c);
+                    i = i+quote.length();
                 }
             }
             
@@ -699,6 +763,7 @@ public class Parser {
     
     
     private static LinkedHashSet<String> getModifiers(String s, int offset) {
+        //console.log(s);
         int idx = offset;
         for (int i=offset; i>-1; i--){
             char c = s.charAt(i);
@@ -867,7 +932,36 @@ public class Parser {
                 
               //Add parameters
                 if (!parameters.isEmpty()){
-                    for (String param : parameters.split(",")){
+                    
+                    ArrayList<String> params = new ArrayList<>();
+                    StringBuilder str = new StringBuilder();
+                    int numBrackets = 0;
+                    for (int i=0; i<parameters.length(); i++){
+                        char c = parameters.charAt(i);
+                        if (c==','){
+                            if (numBrackets==0){
+                                params.add(str.toString());
+                                str = new StringBuilder();
+                            }
+                            else{
+                                str.append(c);
+                            }
+                        }
+                        else{
+                            if (c=='<'){
+                                numBrackets++;
+                            }
+                            else if (c=='>'){
+                                numBrackets--;
+                            }
+                            str.append(c);
+                        }
+                    }
+                    params.add(str.toString());
+                    
+
+                    
+                    for (String param : params){
                         param = param.trim();
                         
                         idx = param.lastIndexOf(" ");
