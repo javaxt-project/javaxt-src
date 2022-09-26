@@ -7,15 +7,15 @@ import static javaxt.utils.Console.console;
 //******************************************************************************
 /**
  *   Used to parse Java and JavaScript source files and return a list of
- *   classes, methods, and properties within each file. 
+ *   classes, methods, and properties within each file.
  *
  ******************************************************************************/
 
 public class Parser {
-    
+
     private ArrayList<Class> classes;
     private String sourceCode;
-    
+
 
   //**************************************************************************
   //** main
@@ -24,77 +24,90 @@ public class Parser {
         HashMap<String, String> args = console.parseArgs(arr);
         java.io.File input = new java.io.File(args.get("-input"));
         //java.io.File output = new java.io.File(args.get("-output"));
-        
+
         if (input.isFile()){
             print(new javaxt.io.File(input));
         }
         else{
-            
+
         }
     }
-    
-    
+
+
   //**************************************************************************
   //** Constructor
   //**************************************************************************
-    public Parser(javaxt.io.File input) throws Exception {
-        parseFile(input);
+    public Parser(javaxt.io.File file) throws Exception {
+        this(file.getText(), file.getExtension());
     }
-    
-    
+
+
+  //**************************************************************************
+  //** Constructor
+  //**************************************************************************
+    public Parser(String text, String type) throws Exception {
+        parse(text, type);
+    }
+
+
   //**************************************************************************
   //** getClasses
   //**************************************************************************
     public ArrayList<Class> getClasses(){
         return classes;
     }
-    
-    
+
+
   //**************************************************************************
   //** getSourceCode
   //**************************************************************************
     public String getSourceCode(){
         return sourceCode;
     }
-    
-    
+
+
   //**************************************************************************
-  //** parseFile
+  //** parse
   //**************************************************************************
-    private void parseFile(javaxt.io.File input){
-        String ext = input.getExtension().toLowerCase();
-        
-        String s = input.getText();
+    private void parse(String s, String ext){
+
+        if (ext==null) throw new IllegalArgumentException("Unknown file type");
+        ext = ext.trim().toLowerCase();
+
+        if (!(ext.equals("java") || ext.equals("js")))
+            throw new IllegalArgumentException("Unsupported file type: " + ext);
+
+
         s = s.replace("\t", "    ").trim();
         s = s.replace("\r\n", "\n").trim();
         s = s.replace("\r", "\n").trim();
         while (s.contains("\n\n")) s = s.replace("\n\n", "\n");
         s = s.trim();
-        
+
         sourceCode = s;
         classes = new ArrayList<>();
-        
+
 
         ArrayList<Integer> brackets = new ArrayList<>();
         String currNamespace = null;
         Class currClass = null;
-        
+
 
         StringBuilder code = new StringBuilder();
         int numBrackets = 0;
-        
+
         boolean insideComment = false;
         StringBuilder currComment = new StringBuilder();
         String lastComment = null;
         int lastCommentIndex = 0;
-        
-        
+
+
         for (int i=0; i<s.length(); i++){
-            char c = s.charAt(i); 
+            char c = s.charAt(i);
             char n = i==s.length()-1 ? ' ' : s.charAt(i+1);
 
-            
-            
+
+
             if (c=='/' && n=='/'){
                 if (insideComment){
                     currComment.append("//");
@@ -107,7 +120,7 @@ public class Parser {
                 }
 
             }
-            
+
             else if (c=='/' && n=='*'){
                 if (!insideComment){
                     insideComment = true;
@@ -115,11 +128,11 @@ public class Parser {
                 currComment.append("/*");
                 i = i+2;
             }
-            
+
             else if (c=='*' && n=='/'){
                 currComment.append("*/");
                 i = i+2;
-                
+
                 if (insideComment){
                     lastComment = currComment.toString();
                     lastCommentIndex = i;
@@ -129,16 +142,16 @@ public class Parser {
                 }
 
             }
-            
+
             else if (c=='"' || c=='\''){
-                
+
                 if (insideComment){
                     currComment.append(c);
                 }
-                else{                    
+                else{
                     String quote = readQuote(s, i, c);
                     code.append(quote);
-                    i = i+quote.length();
+                    i = i+quote.length()-1;
                 }
             }
 
@@ -147,9 +160,9 @@ public class Parser {
                     currComment.append(c);
                 }
                 else{
-                    
+
                     if (c==' ' || c=='\n'){
-                        
+
                       //Find start of the word
                         int idx = -1;
                         for (int j=code.length()-1; j>-1; j--){
@@ -160,8 +173,8 @@ public class Parser {
                             }
                         }
 
-                        
-                        
+
+
                       //Get word
                         String word = null;
                         if (idx>-1){
@@ -173,33 +186,36 @@ public class Parser {
                                 word = code.toString();
                             }
                         }
-                        
-                        
+
+
                       //If we have a word...
                         if (word!=null && !word.isBlank()){
 
                             if (ext.equals("java")){
-                            
+
                                 if (word.equals("package")){
                                     String[] arr = readFunction(s, i);
                                     String fn = arr[0].replace(" ", "");
                                     currNamespace = fn;
                                 }
-                            
-                                else if (word.equals("class")){
+
+                                else if (word.equals("class") || word.equals("interface")){
 
                                   //Get class name and create new Class
                                     String[] arr = readFunction(s, i);
                                     String fn = arr[0]; //class name followed by extends, implements, etc
-                                    arr = fn.split(" "); 
+                                    arr = fn.split(" ");
                                     String name = arr[0];
                                     Class cls = new Class(name);
-                                    
+                                    boolean isInterface = word.equals("interface");
+                                    cls.setInterface(isInterface);
+
+
                                   //Set namespace
                                     cls.setNamespace(currNamespace);
                                     currNamespace = null;
 
-                                    
+
                                   //Add extensions
                                     for (int x=1; x<arr.length; x++){
                                         String wd = arr[x];
@@ -218,7 +234,7 @@ public class Parser {
                                             }
                                         }
                                     }
-                                    
+
 
                                   //Update brackets array (used to find the end of the class)
                                     brackets.add(numBrackets);
@@ -238,7 +254,7 @@ public class Parser {
 
 
                                   //Update currClass
-                                    if (currClass==null){ 
+                                    if (currClass==null){
                                         currClass = cls;
                                     }
                                     else{
@@ -252,44 +268,61 @@ public class Parser {
 //                                    console.log("-----------------------------");
 //                                    if (cls.isPublic()) console.log(cls.getDescription());
                                 }
-                                
-                                
+
+
                                 else if (word.equals("public")){
                                     String[] arr = readFunction(s, i);
                                     String fn = arr[0];
 
-                                  //If the public member is not a class...
-                                    if (!(" " + fn + " ").contains(" class ")){
-                                        
-                                        
+
+                                  //If the public member is not a class or an interface...
+                                    if (!(" " + fn + " ").contains(" class ") &&
+                                        !(" " + fn + " ").contains(" interface ")){
+
                                         String comment = null;
                                         int lc = getEndOfLastComment(s, i);
                                         //console.log(lc, lastCommentIndex);
                                         if (lc==lastCommentIndex){
                                             comment = parseComment(lastComment);
                                         }
-                                        
-                                        
+
+
                                         String raw = arr[1];
                                         char lastChar = s.charAt(i+raw.length());
                                         if (lastChar=='{'){
                                             //console.log(fn);
-                                            
+
                                           //Parse method and add to class
                                             currClass.addMember(parseMethod(fn, comment, ext));
-                                            
+
                                           //Move past the function
                                             int end = getEndBacket(s, i);
                                             //console.log(s.substring(i, end));
-                                            
+
                                             if (end>-1) i = end;
                                         }
+                                        else{
+
+                                            if (lastChar==';' && currClass.isInterface()){
+
+                                              //Parse method and add to class
+                                                currClass.addMember(parseMethod(fn, comment, ext));
+
+
+                                              //Move past the function
+                                                int end = i+raw.length()+1;
+                                                //console.log(s.substring(i, end));
+
+                                                i = end;
+                                            }
+                                        }
+
 
                                     }
                                 }
-                                
-                                
-                                
+
+
+
                             }
                             else if (ext.equals("js")){
 
@@ -316,7 +349,7 @@ public class Parser {
                                             isFunction = nextWord.equals("function") || nextWord.startsWith("function(");
                                         }
                                     }
-                                    else{ 
+                                    else{
                                         if (nextWord.startsWith("=function") || nextWord.startsWith(":function")){
                                             nextWord = nextWord.substring(1);
                                             isFunction = nextWord.equals("function") || nextWord.startsWith("function(");
@@ -326,9 +359,9 @@ public class Parser {
                                         }
                                     }
                                 }
-                                
-                                
-                                
+
+
+
                               //Check if the current word is associated with a json object (e.g. Utils.js)
                                 boolean isStruct = false;
                                 if (!nextWords.isEmpty()){
@@ -339,23 +372,23 @@ public class Parser {
                                             isStruct = nextWord.equals("{") || nextWord.startsWith("{");
                                         }
                                     }
-                                    else{ 
+                                    else{
                                         if (nextWord.startsWith("={") || nextWord.startsWith("{")){
                                             isStruct = true;
                                         }
                                     }
                                 }
-                                
+
                                 if (isStruct){
-                                    
+
                                   //Special case for javaxt-style components
                                     if (word.equals("defaultConfig") && currClass!=null){
-                                        
-                                        
+
+
                                         int a = i+s.substring(i).indexOf("{");
                                         int b = getEndBacket(s, a);
                                         String defaultConfig = s.substring(a, b);
-                                        
+
                                         for (Constructor contructor : currClass.getConstructors()){
                                             for (Parameter parameter : contructor.getParameters()){
                                                 if (parameter.getName().equals("config")){
@@ -365,10 +398,10 @@ public class Parser {
                                                 }
                                             }
                                         }
-                                        
+
                                         i+=b;
                                     }
-                                    
+
                                   //Special case for Utils.js
                                     if (word.contains(".")){
 
@@ -381,24 +414,24 @@ public class Parser {
 
                                         i += s.substring(i).indexOf("{");
                                     }
-                                    
+
                                 }
-                                
-                                
+
+
 
                              //If the current word is a function
                                 if (isFunction){
-                                    
-                                    
+
+
                                   //Set function name
                                     String functionName = word.trim();
                                     if (functionName.endsWith(":") || functionName.endsWith("=")){
                                         functionName = functionName.substring(0, functionName.length()-1).trim();
                                     }
                                     //console.log(functionName);
-                                    
-                                    
-                                    
+
+
+
                                   //Get comments associated with the function
                                     String comment = null;
                                     int lc = getEndOfLastComment(s, i);
@@ -406,27 +439,27 @@ public class Parser {
                                         comment = parseComment(lastComment);
                                     }
                                     //if (comment!=null) console.log(comment);
-                                    
-                                    
+
+
                                   //Parse function
                                     String[] arr = readFunction(s, i);
                                     String fn = arr[0];
                                     String raw = arr[1];
                                     i+=raw.length();
-                                    
-                                    
-                                    
+
+
+
                                     boolean skipBody = true;
                                     boolean addMember = false;
                                     if (functionName.contains(".")){
                                         if (functionName.startsWith("this.")){ //found public method
 
                                             functionName = functionName.substring(5);
-                                            addMember = true;                                            
-                                            
+                                            addMember = true;
+
                                         }
                                         else{ //found class?
-                                            
+
                                             if (currClass==null){ //this is a bit of a hack, need a better way to test for classes
 
                                               //Update functionName
@@ -459,49 +492,49 @@ public class Parser {
                                         }
                                     }
                                     else{ //private member or function is part of json object (e.g. Utils.js)
-                                        
+
                                         if (currClass!=null){
                                             addMember = currClass.getName()==null;
                                         }
                                     }
-                                    
-                                    
+
+
                                     if (addMember){
                                         if (!(fn.startsWith("=") || fn.startsWith(":"))) fn = " = " + fn;
                                         Method m = parseMethod(functionName+fn, comment, ext);
                                         currClass.addMember(m);
                                     }
-                                    
-                                    
+
+
                                   //Move past the function as needed
                                     if (skipBody){
                                         int end = getEndBacket(s, i);
                                         if (end>-1) i = end;
                                     }
                                 }
-                                
-                                
 
-                                
+
+
+
                             }
                         }
                     }
-                    
+
                     if (c=='{'){
                         if (!insideComment) numBrackets++;
                     }
                     if (c=='}'){
                         if (!insideComment) numBrackets--;
-                        
 
-                      //Check brackets to identify end of a class. This is only 
+
+                      //Check brackets to identify end of a class. This is only
                       //used when parsing java code.
                         if (brackets.size()>0)
                         if (numBrackets==brackets.get(brackets.size()-1)){
                             brackets.remove(brackets.size()-1);
-                            
-                                
-                            if (currClass!=null){ 
+
+
+                            if (currClass!=null){
                                 //console.log("----------------------------- //end " + currClass.getName());
                                 Class parent = currClass.getParent();
                                 if (parent==null) classes.add(currClass);
@@ -509,23 +542,23 @@ public class Parser {
                                 currClass = parent;
 
                             }
-                            
+
                         }
 
                     }
-                    
-                    
-                    
+
+
+
                     code.append(c);
-                    
+
                 }
             }
         }
 
     }
-    
-    
-    
+
+
+
   //**************************************************************************
   //** readLine
   //**************************************************************************
@@ -540,16 +573,16 @@ public class Parser {
         }
         return str.toString();
     }
-    
-    
+
+
   //**************************************************************************
   //** readQuote
   //**************************************************************************
-  /** Returns a string encapsulated by either a single or double quote, 
+  /** Returns a string encapsulated by either a single or double quote,
    *  starting at a given index
    */
-    private static String readQuote(String s, int i, char t){ 
-        
+    private static String readQuote(String s, int i, char t){
+
         StringBuilder str = new StringBuilder();
         str.append(s.charAt(i));
         boolean escaped = false;
@@ -572,16 +605,16 @@ public class Parser {
                 escaped = false;
             }
         }
-        
+
         return str.toString();
     }
-    
-    
+
+
   //**************************************************************************
   //** readFunction
   //**************************************************************************
-  /** Used to return a class definition, property, or method starting at a 
-   *  given offset and ending with either a ";" or "{" character 
+  /** Used to return a class definition, property, or method starting at a
+   *  given offset and ending with either a ";" or "{" character
    */
     private static String[] readFunction(String s, int offset){
         StringBuilder str = new StringBuilder();
@@ -589,12 +622,12 @@ public class Parser {
         for (int i=offset; i<s.length(); i++){
             char c = s.charAt(i);
             char n = i==s.length()-1 ? ' ' : s.charAt(i+1);
-            
+
             if (c=='{' || c==';'){
                 idx = i;
                 break;
             }
-            
+
             else if (c=='/' && n=='*'){
                 i = i+2;
                 for (int j=i; j<s.length(); j++){
@@ -607,17 +640,17 @@ public class Parser {
                     i++;
                 }
             }
-            
+
             else if (c=='/' && n=='/'){
                 String comment = readLine(s, i);
                 i += comment.length()-1;
                 str.append("\n");
             }
-            
+
             else{
                 str.append(c);
             }
-            
+
         }
         String raw = s.substring(offset, idx);
         String fn = str.toString().trim();
@@ -625,23 +658,23 @@ public class Parser {
         while (fn.contains("  ")) fn = fn.replace("  ", " ");
         return new String[]{fn, raw};
     }
-    
-    
+
+
   //**************************************************************************
   //** getEndBacket
   //**************************************************************************
   /** Finds the last enclosing bracket in a block of text. Example:
-   *  "var fn = function(){ };" returns 22 
+   *  "var fn = function(){ };" returns 22
    */
     private static int getEndBacket(String s, int offset){
 
-        int numBrackets = 0;        
+        int numBrackets = 0;
         boolean insideComment = false;
-        
+
         for (int i=offset; i<s.length(); i++){
-            char c = s.charAt(i); 
+            char c = s.charAt(i);
             char n = i==s.length()-1 ? ' ' : s.charAt(i+1);
-            
+
             if (c=='/' && n=='/'){
                 if (insideComment){
                     i = i+2;
@@ -651,39 +684,39 @@ public class Parser {
                     i += comment.length()-1;
                 }
             }
-            
+
             else if (c=='/' && n=='*'){
                 if (!insideComment){
                     insideComment = true;
                 }
                 i = i+2;
             }
-            
+
             else if (c=='*' && n=='/'){
                 i = i+2;
                 if (insideComment){
                     insideComment = false;
                 }
             }
-            
+
             else if (c=='"' || c=='\''){
-                
+
                 if (!insideComment){
                     String quote = readQuote(s, i, c);
                     i = i+quote.length();
                 }
             }
-            
+
             else{
                 if (!insideComment){
-                    
+
                     if (c=='{'){
                         numBrackets++;
                     }
                     if (c=='}'){
                         numBrackets--;
-                        
-                        
+
+
                         if (numBrackets==0){
                             return i+1;
                         }
@@ -693,17 +726,17 @@ public class Parser {
         }
         return -1;
     }
-    
-    
+
+
     private static String getNextWord(String s, int offset){
 
         StringBuilder code = new StringBuilder();
         boolean insideComment = false;
-        
+
         for (int i=offset; i<s.length(); i++){
-            char c = s.charAt(i); 
+            char c = s.charAt(i);
             char n = i==s.length()-1 ? ' ' : s.charAt(i+1);
-            
+
             if (c=='/' && n=='/'){
                 if (insideComment){
                     i = i+2;
@@ -714,26 +747,26 @@ public class Parser {
                     code.append("\n");
                 }
             }
-            
+
             else if (c=='/' && n=='*'){
                 if (!insideComment){
                     insideComment = true;
                 }
                 i = i+2;
             }
-            
+
             else if (c=='*' && n=='/'){
                 i = i+2;
                 if (insideComment){
                     insideComment = false;
                 }
             }
-            
+
             else{
                 if (!insideComment){
-                    
+
                     if (c==' ' || c=='\n'){
-                        
+
                       //Find start of the word
                         int idx = -1;
                         for (int j=code.length()-1; j>-1; j--){
@@ -744,8 +777,8 @@ public class Parser {
                             }
                         }
 
-                        
-                        
+
+
                       //Get word
                         if (idx>-1){
                             String word = code.substring(idx);
@@ -753,38 +786,38 @@ public class Parser {
                             code = new StringBuilder();
                         }
                     }
-                    
+
                     code.append(c);
                 }
             }
         }
         return code.toString();
     }
-    
-    
+
+
     private static LinkedHashSet<String> getModifiers(String s, int offset) {
         //console.log(s);
         int idx = offset;
         for (int i=offset; i>-1; i--){
             char c = s.charAt(i);
             char p = i==0 ? ' ' : s.charAt(i-1);
-            
+
           //If we're passing in code without comments, we don't need the following
             /*
             if (c=='/' && p=='/'){
                 idx += readLine(s, offset).length();
                 break;
             }
-            
+
             if (c=='/' && p=='*'){
                 break;
             }
             */
-            
+
             if (c=='}' || c==';'){
                 break;
             }
-            
+
             idx = i;
         }
         String str = s.substring(idx, offset).trim();
@@ -796,7 +829,7 @@ public class Parser {
         }
         return modifiers;
     }
-    
+
     private static int getEndOfLastComment(String s, int offset) {
 
         for (int i=offset; i>-1; i--){
@@ -809,60 +842,60 @@ public class Parser {
                 for (int j=i-1; j>-1; j--){
                     c = s.charAt(j);
                     p = j==0 ? ' ' : s.charAt(j-1);
-                    
+
                     if (c=='\n'){
                         break;
                     }
-                    
+
                     if (c=='/' && p=='/'){
                         insideComment = true;
                     }
-                    
+
                     if (c=='*' && p=='/'){
                         //insideComment = true;
                     }
                 }
-                
+
                 if (!insideComment){
                     return -1;
                 }
             }
-            
+
             if (c=='/' && p=='*'){
-                
+
                 boolean insideComment = false;
                 for (int j=i-1; j>-1; j--){
                     c = s.charAt(j);
                     p = j==0 ? ' ' : s.charAt(j-1);
-                    
+
                     if (c=='\n'){
                         break;
                     }
-                    
+
                     if (c=='/' && p=='/'){
                         insideComment = true;
                     }
-                    
+
                     if (c=='*' && p=='/'){
                         //insideComment = true;
                     }
                 }
-                
+
                 if (!insideComment){
                     return i+1;
                 }
             }
-            
+
 
         }
         return -1;
     }
-    
 
-    
+
+
     private static Method parseMethod(String fn, String comments, String ext){
-        
-        
+
+
       //Parse comments separating description from annotations
         String description = null;
         ArrayList<String> annotations = new ArrayList<>();
@@ -892,26 +925,37 @@ public class Parser {
                 }
             }
         }
-        
-        
+
+
         if (ext.equals("java")){
             boolean isStatic = false; //only for java
 
             String member = fn;
             for (String str : new String[]{"public","private","protected","abstract","static","final"}){
-                if (member.startsWith(str + " ")){ 
+                if (member.startsWith(str + " ")){
                     member = member.substring(str.length()+1);
                     if (str.equals("static")) isStatic = true;
                 }
             }
-            
-            
+
+
             int a = member.indexOf("(");
-            int b = member.indexOf(")");
+            int b = -1; //member.indexOf(")");
+            int numParentheses = 1;
+            for (int i=a+1; i<member.length(); i++){
+                char c = member.charAt(i);
+                if (c=='(') numParentheses++;
+                else if (c==')') numParentheses--;
+                if (numParentheses==0){
+                    b=i;
+                    break;
+                }
+            }
+
             if (a>-1 && b>-1){
                 String parameters = member.substring(a+1,b).trim();
                 member = member.substring(0, a).trim();
-                
+
               //Get method
                 Method method;
                 int idx = member.lastIndexOf(" ");
@@ -925,14 +969,14 @@ public class Parser {
                 else{
                     method = new Constructor(member);
                 }
-                
+
               //Set description
                 method.setDescription(description);
-                
-                
+
+
               //Add parameters
                 if (!parameters.isEmpty()){
-                    
+
                     ArrayList<String> params = new ArrayList<>();
                     StringBuilder str = new StringBuilder();
                     int numBrackets = 0;
@@ -958,12 +1002,12 @@ public class Parser {
                         }
                     }
                     params.add(str.toString());
-                    
 
-                    
+
+
                     for (String param : params){
                         param = param.trim();
-                        
+
                         idx = param.lastIndexOf(" ");
                         if (idx==-1){
                           //Check if we have a spread operator
@@ -975,16 +1019,16 @@ public class Parser {
                                 idx = param.indexOf(" ");
                             }
                         }
-                        
+
                         String paramName = param.substring(idx).trim();
                         String paramType = param.substring(0, idx).trim();
                         idx = paramType.lastIndexOf(" ");
                         if (idx>-1) paramType = paramType.substring(idx).trim();
-                        
+
                         Parameter parameter = new Parameter(paramName);
                         parameter.setType(paramType);
                         method.addParameter(parameter);
-                        
+
                         for (String annotation : annotations){
                             if (annotation.startsWith("@param " + paramName + " ")){
                                 annotation = annotation.substring(("@param " + paramName).length()+1);
@@ -992,7 +1036,7 @@ public class Parser {
                                 break;
                             }
                         }
-                        
+
                     }
                 }
 
@@ -1001,35 +1045,35 @@ public class Parser {
             else{
                 //class or property
             }
-            
+
         }
         else if (ext.equals("js")){
             int a = fn.indexOf("(");
             int b = fn.indexOf(")");
             if (a>-1 && b>-1){
 
-                
+
               //Create method
                 int idx = fn.indexOf("=");
                 if (idx==-1) idx = fn.indexOf(":");
                 String name = fn.substring(0, idx);
                 Method method = new Method(name);
 
-                
+
               //Set description
                 method.setDescription(description);
-                
-                
+
+
               //Add parameters
                 String parameters = fn.substring(a+1,b).trim();
                 if (!parameters.isEmpty()){
                     for (String param : parameters.split(",")){
                         param = param.trim();
 
-                        
+
                         Parameter parameter = new Parameter(param);
                         method.addParameter(parameter);
-                        
+
                         for (String annotation : annotations){
                             if (annotation.startsWith("@param " + param + " ")){
                                 annotation = annotation.substring(("@param " + param).length()+1);
@@ -1037,28 +1081,28 @@ public class Parser {
                                 break;
                             }
                         }
-                        
+
                     }
                 }
 
                 return method;
-                
-                
+
+
             }
         }
-        
-        
+
+
 //            System.out.println(method);
 //            System.out.println("  +" + methodName);
 //            System.out.println("  -" + parameters);
 //            System.out.println("   returns " + returnType);
-        
 
 
-        
+
+
         return null;
     }
-    
+
     private static String parseComment(String comment){
         comment = comment.trim();
         if (comment.startsWith("/*")) comment = comment.substring(2);
@@ -1074,7 +1118,7 @@ public class Parser {
             else{
                 if (row.contains("</pre>")) insidePre = false;
             }
-            if (str.length()>0){ 
+            if (str.length()>0){
                 if (insidePre) str.append("\n");
                 else{
                     if (row.startsWith("@")) str.append("\n");
@@ -1085,13 +1129,13 @@ public class Parser {
         }
         return str.toString().trim();
     }
-    
-    
-    
+
+
+
   //**************************************************************************
   //** print
   //**************************************************************************
-  /** Used to display all the classes, methods and properties found in a given 
+  /** Used to display all the classes, methods and properties found in a given
    *  file
    */
     private static void print(javaxt.io.File input) throws Exception {
@@ -1100,13 +1144,14 @@ public class Parser {
         for (Class cls : classes){
             String className = cls.getName();
             String namespace = cls.getNamespace();
+            boolean isInterface = cls.isInterface();
             if (namespace!=null) className = namespace + "." + className;
             System.out.println("-----------------------------------");
-            System.out.println("- " + className);
+            System.out.println("- " + className + (isInterface? " (Interface)" : ""));
             System.out.println("-----------------------------------");
             String description = cls.getDescription();
             if (description!=null) System.out.println(description);
-            
+
             ArrayList<String> extensions = cls.getSuper();
             if (!extensions.isEmpty()){
                 System.out.print("\r\nExtends");
@@ -1115,7 +1160,7 @@ public class Parser {
                 }
                 System.out.println("\r\n");
             }
-            
+
 
             ArrayList<Constructor> contructors = cls.getConstructors();
             if (!contructors.isEmpty()){
@@ -1124,35 +1169,35 @@ public class Parser {
                     printMethod(m);
                 }
             }
-            
+
             ArrayList<Method> methods = cls.getMethods();
             if (!methods.isEmpty()){
                 System.out.println("\r\n## Methods: ");
-                
+
                 for (Method m : methods){
                     printMethod(m);
                 }
-                
+
                 for (Property p : cls.getProperties()){
                     console.log("  *" + p.getName());
                 }
             }
-            
+
             for (Class c : cls.getClasses()){
                 if (c.isPublic()){
                     console.log(" +" + c.getName());
                 }
             }
-            
-            
+
+
             System.out.println("-----------------------------------");
             System.out.println("\r\n");
-            
+
         }
-        
+
     }
-    
-    
+
+
   //**************************************************************************
   //** printMethod
   //**************************************************************************
@@ -1192,11 +1237,11 @@ public class Parser {
                 System.out.println("     * " + param);
             }
         }
-        
+
         if (returnType!=null){
             System.out.println("\r\n   - Returns:");
             System.out.println("     " + returnType);
-            
+
         }
     }
 }
