@@ -9,6 +9,7 @@ public class Class implements Member, Comparable {
     private Class parent;
     private ArrayList<Member> members;
     private boolean isPublic = true;
+    private boolean isInterface = false;
     private String namespace;
     private ArrayList<String> extensions;
     private ArrayList<String> interfaces;
@@ -39,6 +40,14 @@ public class Class implements Member, Comparable {
 
     public void setPublic(boolean isPublic){
         this.isPublic = isPublic;
+    }
+
+    public boolean isInterface(){
+        return isInterface;
+    }
+
+    public void setInterface(boolean isInterface){
+        this.isInterface = isInterface;
     }
 
     public void setNamespace(String namespace){
