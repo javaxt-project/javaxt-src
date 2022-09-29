@@ -75,6 +75,10 @@ public class Class implements Member, Comparable {
     }
 
     public void addMember(Member member){
+        if (member instanceof Class){
+            Class c = (Class) member;
+            c.namespace = this.toString();
+        }
         members.add(member);
     }
 
