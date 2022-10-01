@@ -13,6 +13,7 @@ public class Class implements Member, Comparable {
     private String namespace;
     private ArrayList<String> extensions;
     private ArrayList<String> interfaces;
+    private ArrayList<Config> config;
 
 
     public Class(String name){
@@ -20,6 +21,7 @@ public class Class implements Member, Comparable {
         this.members = new ArrayList<>();
         this.extensions = new ArrayList<>();
         this.interfaces = new ArrayList<>();
+        this.config = new ArrayList<>();
     }
 
     public String getName(){
@@ -84,6 +86,14 @@ public class Class implements Member, Comparable {
 
     public ArrayList<Member> getMembers(){
         return members;
+    }
+
+    public void addConfig(Config config){
+        this.config.add(config);
+    }
+
+    public ArrayList<Config> getConfig(){
+        return config;
     }
 
     public ArrayList<Class> getClasses(){
