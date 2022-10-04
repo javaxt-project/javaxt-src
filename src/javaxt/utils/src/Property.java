@@ -7,6 +7,7 @@ public class Property implements Member {
     private String type;
     private String defaultValue;
     private boolean isStatic = false;
+    private boolean isPublic = true;
 
     public Property(String name){
         this.name = name;
@@ -14,6 +15,14 @@ public class Property implements Member {
 
     public String getName(){
         return name;
+    }
+
+    public boolean isPublic(){
+        return isPublic;
+    }
+
+    public void setPublic(boolean isPublic){
+        this.isPublic = isPublic;
     }
 
     public void setDescription(String description){
