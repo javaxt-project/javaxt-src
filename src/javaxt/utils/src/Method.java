@@ -9,6 +9,8 @@ public class Method implements Member {
     private boolean isPublic = true;
     private String returnType;
     private ArrayList<Parameter> parameters;
+    private boolean isDeprecated = false;
+    private String deprecationMessage;
 
     public Method(String name){
         this.name = name;
@@ -29,6 +31,15 @@ public class Method implements Member {
 
     public boolean isStatic(){
         return isStatic;
+    }
+
+    public void setDeprecated(boolean isDeprecated, String message){
+        this.isDeprecated = isDeprecated;
+        this.deprecationMessage = message;
+    }
+
+    public boolean isDeprecated(){
+        return isDeprecated;
     }
 
     public void setReturnType(String returnType){
