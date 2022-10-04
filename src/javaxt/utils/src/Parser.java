@@ -71,302 +71,435 @@ public class Parser {
   //** parse
   //**************************************************************************
     private void parse(String s, String ext){
-
-        if (ext==null) throw new IllegalArgumentException("Unknown file type");
-        ext = ext.trim().toLowerCase();
-
-        if (!(ext.equals("java") || ext.equals("js")))
-            throw new IllegalArgumentException("Unsupported file type: " + ext);
-
-
-        s = s.replace("\t", "    ").trim();
-        s = s.replace("\r\n", "\n").trim();
-        s = s.replace("\r", "\n").trim();
-        while (s.contains("\n\n")) s = s.replace("\n\n", "\n");
-        s = s.trim();
-
         sourceCode = s;
 
+        if (ext==null) ext = "";
+        else ext = ext.trim().toLowerCase();
 
-        if (ext.equals("js")){
+
+        if (ext.equals("js") || ext.equals("javascript")){
             classes = getClasses(s);
-            return;
         }
-
-        classes = new ArrayList<>();
-
-
-        ArrayList<Integer> brackets = new ArrayList<>();
-        String currNamespace = null;
-        Class currClass = null;
+        else if (ext.equals("java")) {
+            classes = new ArrayList<>();
+            String packageName = null;
 
 
-        StringBuilder code = new StringBuilder();
-        int numBrackets = 0;
+            int i=0;
+            Word word, p1 = null, p2 = null;
+            while ((word = getNextWord(s, i))!=null){
 
-        boolean insideComment = false;
-        StringBuilder currComment = new StringBuilder();
-        String lastComment = null;
-        int lastCommentIndex = 0;
+                String str = word.toString();
+                if (str.endsWith("package") && packageName==null){
+                    Word nextWord = getNextWord(s, word.end);
+                    packageName = nextWord.toString();
+
+                    int idx = packageName.indexOf(";");
+                    if (idx>-1){
+                        packageName = packageName.substring(0, idx);
+                        i = (nextWord.end-idx)+1;
+                    }
+                    else{
+                        i = nextWord.end+1;
+                    }
+
+                }
+                else if (str.endsWith("class") || str.endsWith("interface")){
+
+                    int start = getStartBacket(s, i, '{');
+                    int end = getEndBacket(s, start, '{');
+
+                    Word nextWord = getNextWord(s, word.end);
+                    String name = nextWord.toString();
+
+                    Class cls = new Class(name);
+                    cls.setNamespace(packageName);
+                    addModifiers(cls, word, p1, p2);
+                    addExtensions(cls, s.substring(word.end, start));
+                    boolean isInterface = str.contains("interface");
+                    cls.setInterface(isInterface);
+                    addMembers(cls, s.substring(start, end));
+                    classes.add(cls);
 
 
-        for (int i=0; i<s.length(); i++){
-            char c = s.charAt(i);
-            char n = i==s.length()-1 ? ' ' : s.charAt(i+1);
-
-
-
-            if (c=='/' && n=='/'){
-                if (insideComment){
-                    currComment.append("//");
-                    i = i+1;
+                    i = end+1;
                 }
                 else{
-                    String comment = readLine(s, i);
-                    i += comment.length()-1;
-                    code.append("\n");
+                    i = word.end+1;
                 }
 
+                p2 = p1;
+                p1 = word;
             }
+        }
+        else{
+            throw new IllegalArgumentException("Unsupported file type: " + ext);
+        }
+    }
 
-            else if (c=='/' && n=='*'){
-                if (!insideComment){
-                    insideComment = true;
-                }
-                currComment.append("/*");
-                i = i+2;
-            }
 
-            else if (c=='*' && n=='/'){
-                currComment.append("*/");
-                i = i+2;
+  //**************************************************************************
+  //** addMembers
+  //**************************************************************************
+  /** Used to find Java methods and properties and add them to the given class
+   */
+    private static void addMembers(Class cls, String s){
 
-                if (insideComment){
-                    lastComment = currComment.toString();
-                    lastCommentIndex = i;
-                    //console.log(lastComment);
-                    currComment.delete(0, currComment.length());
-                    insideComment = false;
-                }
 
-            }
+        s = s.trim();
+        if (s.startsWith("{") && s.endsWith("}")) s = s.substring(1, s.length()-1).trim();
 
-            else if (c=='"' || c=='\''){
 
-                if (insideComment){
-                    currComment.append(c);
-                }
-                else{
-                    String quote = readQuote(s, i, c);
-                    code.append(quote);
-                    i = i+quote.length()-1;
-                }
-            }
 
-            else{
-                if (insideComment){
-                    currComment.append(c);
-                }
-                else{
+        int i=0;
+        Word word;
+        while ((word = getNextWord(s, i))!=null){
 
-                    if (c==' ' || c=='\n'){
+            String str = word.toString();
+            if (str.equals("public") || str.equals("private") || str.equals("protected")
+                || str.equals("class") || str.equals("interface")
+            ){
 
-                      //Find start of the word
-                        int idx = -1;
-                        for (int j=code.length()-1; j>-1; j--){
-                            int t = code.charAt(j);
-                            if (t==' ' || t=='\n'){
-                                idx = j+1;
-                                break;
+                boolean isPublic = !(str.equals("private") || str.equals("protected"));
+
+                Comment comment = parseComment(word.lastComment);
+
+
+                int a = getStartBacket(s, i, '(');
+                int b = getStartBacket(s, i, ';');
+                int c = getStartBacket(s, i, '{');
+                int d = getStartBacket(s, i, '=');
+                if (a==-1) a = Integer.MAX_VALUE;
+                if (b==-1) b = Integer.MAX_VALUE;
+                if (c==-1) c = Integer.MAX_VALUE;
+                if (d==-1) d = Integer.MAX_VALUE;
+
+
+
+                if (c<a && c<b && c<d){ //found class or interface
+
+                    int start = c;
+                    int end = getEndBacket(s, start, '{');
+                    String fn = s.substring(i, start);
+
+
+                    ArrayList<Word> words = new ArrayList<>();
+                    int j=0, idx=-1;
+                    Word w;
+                    while ((w = getNextWord(fn, j))!=null){
+                        String wd = w.toString();
+                        if (!wd.isEmpty()){
+                            words.add(w);
+                            if (wd.equals("class") || wd.equals("interface")){
+                                idx = words.size()-1;
                             }
+                        }
+                        j = w.end+1;
+                    }
+
+
+                    if (idx>-1){
+                        word = words.get(idx);
+                        Word nextWord = words.get(idx+1);
+                        String name = nextWord.toString();
+                        Word p1 = idx>0 ? words.get(idx-1) : null;
+                        Word p2 = idx>1 ? words.get(idx-2) : null;
+
+                        String extensions = "";
+                        for (j=idx+1; j<words.size(); j++){
+                            if (!extensions.isEmpty()) extensions += " ";
+                            extensions += words.get(j).toString();
                         }
 
 
+                        Class innerClass = new Class(name);
+                        addModifiers(innerClass, word, p1, p2);
+                        addExtensions(innerClass, extensions);
+                        boolean isInterface = word.toString().equals("interface");
+                        innerClass.setInterface(isInterface);
+                        addMembers(innerClass, s.substring(start, end));
 
-                      //Get word
-                        String word = null;
-                        if (idx>-1){
-                            word = code.substring(idx);
+                        cls.addMember(innerClass);
+                    }
+
+
+                    i = end+1;
+                }
+                else{ //found method or property
+
+                    if (a<b && a<d){ //found method
+
+
+                      //Get parameters
+                        int start = a;
+                        int end = getEndBacket(s, start, '(');
+                        String params = s.substring(start, end);
+
+
+                      //Get keywords before the parameters
+                        String fn = s.substring(word.end, a);
+                        ArrayList<String> arr = new ArrayList<>();
+                        int j=0;
+                        Word w;
+                        while ((w = getNextWord(fn, j))!=null){
+                            arr.add(w.toString().trim());
+                            j = w.end+1;
                         }
-                        else{
-                          //Special case for package keywords in java files
-                            if (code.toString().equals("package") && ext.equals("java")){
-                                word = code.toString();
-                            }
-                        }
 
 
-                      //If we have a word...
-                        if (word!=null && !word.isBlank()){
-
-                            if (word.equals("package")){
-                                String[] arr = readFunction(s, i);
-                                String fn = arr[0].replace(" ", "");
-                                currNamespace = fn;
-                            }
-
-                            else if (word.equals("class") || word.equals("interface")){
-
-                              //Get class name and create new Class
-                                String[] arr = readFunction(s, i);
-                                String fn = arr[0]; //class name followed by extends, implements, etc
-                                arr = fn.split(" ");
-                                String name = arr[0];
-                                Class cls = new Class(name);
-                                boolean isInterface = word.equals("interface");
-                                cls.setInterface(isInterface);
+                      //Get method name
+                        String name = arr.get(arr.size()-1);
 
 
-                              //Set namespace
-                                cls.setNamespace(currNamespace);
-                                currNamespace = null;
-
-
-                              //Add extensions
-                                for (int x=1; x<arr.length; x++){
-                                    String wd = arr[x];
-                                    if (wd.equals("extends")){
-                                        for (int y=x+1; y<arr.length; y++){
-                                            String w = arr[y];
-                                            if (w.equals("implements")) break;
-                                            cls.addSuper(w);
-                                        }
+                      //Get return type
+                        String returnType = null;
+                        boolean isStatic = false;
+                        if (arr.size()>1){
+                            for (int k=0; k<arr.size()-1; k++){
+                                String t = arr.get(k);
+                                if (t.equals("final") || t.equals("static") || t.equals("abstract")){
+                                    if (t.equals("static")){
+                                        isStatic = true;
                                     }
-                                    if (wd.equals("implements")){
-                                        for (int y=x+1; y<arr.length; y++){
-                                            String w = arr[y];
-                                            if (w.equals("extends")) break;
-                                            cls.addInterface(w);
-                                        }
-                                    }
-                                }
-
-
-                              //Update brackets array (used to find the end of the class)
-                                brackets.add(numBrackets);
-
-
-                              //Get class modifiers (public, static, final, etc)
-                                LinkedHashSet<String> modifiers = getModifiers(code.toString(), idx);
-                                if (modifiers.contains("private")) cls.setPublic(false);
-
-
-                              //Get last comment and update the class
-                                int lc = getEndOfLastComment(s, i);
-                                if (lc==lastCommentIndex){
-                                    String comment = parseComment(lastComment).getDescription();
-                                    cls.setDescription(comment);
-                                }
-
-
-                              //Update currClass
-                                if (currClass==null){
-                                    currClass = cls;
                                 }
                                 else{
-                                    cls.setParent(currClass);
-                                    currClass = cls;
+                                    if (returnType==null) returnType = t;
+                                    else returnType += " " + t;
                                 }
+                            }
+                            returnType = returnType.trim();
+                            if (returnType.isEmpty()) returnType = null;
+                        }
 
 
-//                                console.log("-----------------------------");
-//                                console.log(modifiers, "class " + "|" + name + "|");
-//                                console.log("-----------------------------");
-//                                if (cls.isPublic()) console.log(cls.getDescription());
+                      //Create method
+                        Method method;
+                        if (returnType==null){
+                            method = new Constructor(name);
+                        }
+                        else{
+                            method = new Method(name);
+                            method.setReturnType(returnType);
+                        }
+                        method.setPublic(isPublic);
+                        method.setDescription(comment.getDescription());
+                        cls.addMember(method);
+
+
+                      //Add modifiers
+                        method.setStatic(isStatic);
+                        ArrayList<String> annotations = comment.getAnnotations();
+                        for (String annotation : annotations){
+                            if (annotation.startsWith("@deprecated")){
+                                String additionalInfo = annotation.substring("@deprecated".length()).trim();
+                                method.setDeprecated(true, additionalInfo);
+                            }
+                        }
+
+
+                      //Add parameters
+                        for (Parameter parameter : getParameters(params, annotations)){
+                            method.addParameter(parameter);
+                        }
+
+
+                      //Find end of function
+                        a = getStartBacket(s, end, '{');
+                        b = getStartBacket(s, end, ';');
+                        if (a==-1) a = Integer.MAX_VALUE;
+                        if (b==-1) b = Integer.MAX_VALUE;
+                        if (a<b){
+                            end = getEndBacket(s, a, '{');
+                        }
+                        else if (b<a){
+                            end = b;
+                        }
+
+                        i = end+1;
+
+                    }
+                    else if (b<a || d<a){ //found property or class
+
+
+                        if (b<c){ //found property
+                            String p = s.substring(word.end, b);
+
+
+                            StringBuilder prop = new StringBuilder();
+                            int j=0;
+                            Word w;
+                            while ((w = getNextWord(p, j))!=null){
+                                String wd = w.toString();
+                                if (!wd.isEmpty()){
+                                    if (prop.length()>0) prop.append(" ");
+                                    prop.append(wd);
+                                }
+                                j = w.end+1;
+                            }
+                            p = prop.toString().trim();
+
+                            String defaultValue = null;
+                            int idx = getStartBacket(p, 0, '=');
+                            if (idx>-1){
+                                defaultValue = p.substring(idx+1).trim();
+                                p = p.substring(0, idx).trim();
                             }
 
 
-                            else if (word.equals("public")){ //skipping "private", "protected", etc
-                                String[] arr = readFunction(s, i);
-                                String fn = arr[0];
+
+                            ArrayList<String> arr = new ArrayList<>();
+                            j=0;
+                            while ((w = getNextWord(p, j))!=null){
+                                arr.add(w.toString().trim());
+                                j = w.end+1;
+                            }
+
+                          //Get property name
+                            String name = arr.get(arr.size()-1);
 
 
-                              //If the public member is not a class or an interface...
-                                if (!(" " + fn + " ").contains(" class ") &&
-                                    !(" " + fn + " ").contains(" interface ")){
-
-                                    Comment comment = null;
-                                    int lc = getEndOfLastComment(s, i);
-                                    //console.log(lc, lastCommentIndex);
-                                    if (lc==lastCommentIndex){
-                                        comment = parseComment(lastComment);
-                                    }
-
-
-                                    String raw = arr[1];
-                                    char lastChar = s.charAt(i+raw.length());
-                                    if (lastChar=='{'){
-                                        //console.log(fn);
-
-                                      //Parse method and add to class
-                                        currClass.addMember(parseMethod(fn, comment, ext));
-
-                                      //Move past the function
-                                        int end = getEndBacket(s, i, '{');
-                                        //console.log(s.substring(i, end));
-
-                                        if (end>-1) i = end;
-                                    }
-                                    else{
-
-                                        if (lastChar==';' && currClass.isInterface()){
-
-                                          //Parse method and add to class
-                                            currClass.addMember(parseMethod(fn, comment, ext));
-
-
-                                          //Move past the function
-                                            int end = i+raw.length()+1;
-                                            //console.log(s.substring(i, end));
-
-                                            i = end;
+                          //Get property type
+                            String type = null;
+                            boolean isStatic = false;
+                            if (arr.size()>1){
+                                for (int k=0; k<arr.size()-1; k++){
+                                    String t = arr.get(k);
+                                    if (t.equals("final") || t.equals("static") || t.equals("abstract")){
+                                        if (t.equals("static")){
+                                            isStatic = true;
                                         }
                                     }
-
-
+                                    else{
+                                        if (type==null) type = t;
+                                        else type += " " + t;
+                                    }
                                 }
+                                type = type.trim();
+                                if (type.isEmpty()) type = null;
                             }
+
+                            //console.log(cls.toString() + " - " + name + " (" + type + ") " +"|"+defaultValue);
+
+                            Property property = new Property(name);
+                            property.setPublic(isPublic);
+                            property.setDescription(comment.getDescription());
+                            property.setType(type);
+                            property.setStatic(isStatic);
+                            property.setDefaultValue(defaultValue);
+                            cls.addMember(property);
+
+
+                            i = b+1;
+                        }
+                        else{
+
+                            i = word.end+1;
 
                         }
                     }
+                    else{
 
-                    if (c=='{'){
-                        if (!insideComment) numBrackets++;
+                        i = word.end+1;
                     }
-                    if (c=='}'){
-                        if (!insideComment) numBrackets--;
+                }
+
+            }
+            else{
+
+                i = word.end+1;
+
+            }
+        }
+    }
 
 
-                      //Check brackets to identify end of a class. This is only
-                      //used when parsing java code.
-                        if (brackets.size()>0)
-                        if (numBrackets==brackets.get(brackets.size()-1)){
-                            brackets.remove(brackets.size()-1);
+  //**************************************************************************
+  //** addModifiers
+  //**************************************************************************
+    private static void addModifiers(Class cls, Word word, Word p1, Word p2){
+        String lastComment = word.lastComment;
+        if (lastComment==null){
+            if (p1!=null){
+                String type = p1.toString();
+                int idx = type.lastIndexOf(";");
+                if (idx>-1) type = type.substring(idx+1);
+                idx = type.lastIndexOf("}");
+                if (idx>-1) type = type.substring(idx+1);
 
+                if (type.equals("private") || type.equals("protected")){
+                    cls.setPublic(false);
+                    p2 = null;
+                }
+                else if (type.equals("public")){
+                    p2 = null;
+                }
 
-                            if (currClass!=null){
-                                //console.log("----------------------------- //end " + currClass.getName());
-                                Class parent = currClass.getParent();
-                                if (parent==null) classes.add(currClass);
-                                else parent.addMember(currClass);
-                                currClass = parent;
+                lastComment = p1.lastComment;
 
-                            }
-
+                if (lastComment==null){
+                    if (p2!=null){
+                        type = p2.toString();
+                        idx = type.lastIndexOf(";");
+                        if (idx>-1) type = type.substring(idx+1);
+                        idx = type.lastIndexOf("}");
+                        if (idx>-1) type = type.substring(idx+1);
+                        if (type.equals("private") || type.equals("protected")){
+                            cls.setPublic(false);
                         }
 
+                        lastComment = p2.lastComment;
                     }
+                }
+            }
+        }
+        if (lastComment!=null){
+            cls.setDescription(parseComment(lastComment).getDescription());
+        }
+    }
+
+
+  //**************************************************************************
+  //** addExtensions
+  //**************************************************************************
+  /** Used to search for "extends" and "implements" keywords after a Java
+   *  class name
+   */
+    private static void addExtensions(Class cls, String fn){
+        if (fn==null) return;
+        fn = fn.trim();
+        if (fn.isEmpty()) return;
+
+
+        ArrayList<String> arr = new ArrayList<>();
+        int j=0;
+        Word word;
+        while ((word = getNextWord(fn, j))!=null){
+            arr.add(word.toString());
+            j = word.end+1;
+        }
 
 
 
-                    code.append(c);
-
+      //Add extensions
+        for (int x=1; x<arr.size(); x++){
+            String wd = arr.get(x);
+            if (wd.equals("extends")){
+                for (int y=x+1; y<arr.size(); y++){
+                    String w = arr.get(y);
+                    if (w.equals("implements")) break;
+                    cls.addSuper(w);
+                }
+            }
+            if (wd.equals("implements")){
+                for (int y=x+1; y<arr.size(); y++){
+                    String w = arr.get(y);
+                    if (w.equals("extends")) break;
+                    cls.addInterface(w);
                 }
             }
         }
 
     }
-
 
 
   //**************************************************************************
@@ -417,56 +550,6 @@ public class Parser {
         }
 
         return str.toString();
-    }
-
-
-  //**************************************************************************
-  //** readFunction
-  //**************************************************************************
-  /** Used to return a class definition, property, or method starting at a
-   *  given offset and ending with either a ";" or "{" character
-   */
-    private static String[] readFunction(String s, int offset){
-        StringBuilder str = new StringBuilder();
-        int idx = offset;
-        for (int i=offset; i<s.length(); i++){
-            char c = s.charAt(i);
-            char n = i==s.length()-1 ? ' ' : s.charAt(i+1);
-
-            if (c=='{' || c==';'){
-                idx = i;
-                break;
-            }
-
-            else if (c=='/' && n=='*'){
-                i = i+2;
-                for (int j=i; j<s.length(); j++){
-                    c = s.charAt(j);
-                    n = j==s.length()-1 ? ' ' : s.charAt(j+1);
-                    if (c=='*' && n=='/'){
-                        i = i+2;
-                        break;
-                    }
-                    i++;
-                }
-            }
-
-            else if (c=='/' && n=='/'){
-                String comment = readLine(s, i);
-                i += comment.length()-1;
-                str.append("\n");
-            }
-
-            else{
-                str.append(c);
-            }
-
-        }
-        String raw = s.substring(offset, idx);
-        String fn = str.toString().trim();
-        fn = fn.replace("\n"," ").trim();
-        while (fn.contains("  ")) fn = fn.replace("  ", " ");
-        return new String[]{fn, raw};
     }
 
 
@@ -677,15 +760,21 @@ public class Parser {
                 }
                 else{
 
-                    if (c==' ' || c=='\n'){
+                    if ((c==' ' || c=='\r' || c=='\n' || c=='\t') && code.length()>0){
 
                       //Find start of the word
                         int idx = -1;
+                        boolean foundEnd = false;
                         for (int j=code.length()-1; j>-1; j--){
                             int t = code.charAt(j);
-                            if (t==' ' || t=='\n'){
-                                idx = j+1;
-                                break;
+                            if (t==' ' || c=='\r' || c=='\n' || c=='\t'){
+                                if (foundEnd){
+                                    idx = j+1;
+                                    break;
+                                }
+                            }
+                            else{
+                                foundEnd = true;
                             }
                         }
 
@@ -702,7 +791,7 @@ public class Parser {
 
 
                         if (!word.isBlank()){
-                            return new Word(word, i, lastComment, lastCommentIndex);
+                            return new Word(word.trim(), i, lastComment, lastCommentIndex);
                         }
                         else{
                             code = new StringBuilder();
@@ -715,303 +804,9 @@ public class Parser {
         }
 
         if (insideComment) return null;
-        return new Word(code.toString(), i, lastComment, lastCommentIndex);
-    }
-
-
-  //**************************************************************************
-  //** getModifiers
-  //**************************************************************************
-    private static LinkedHashSet<String> getModifiers(String s, int offset) {
-        //console.log(s);
-        int idx = offset;
-        for (int i=offset; i>-1; i--){
-            char c = s.charAt(i);
-            char p = i==0 ? ' ' : s.charAt(i-1);
-
-          //If we're passing in code without comments, we don't need the following
-            /*
-            if (c=='/' && p=='/'){
-                idx += readLine(s, offset).length();
-                break;
-            }
-
-            if (c=='/' && p=='*'){
-                break;
-            }
-            */
-
-            if (c=='}' || c==';'){
-                break;
-            }
-
-            idx = i;
-        }
-        String str = s.substring(idx, offset).trim();
-        while (str.contains("  ")) str = str.replace("  ", " ");
-        LinkedHashSet<String> modifiers = new LinkedHashSet<>();
-        for (String word : str.split(" ")){
-            word = word.trim();
-            if (!word.isEmpty()) modifiers.add(word);
-        }
-        return modifiers;
-    }
-
-
-  //**************************************************************************
-  //** getEndOfLastComment
-  //**************************************************************************
-    private static int getEndOfLastComment(String s, int offset) {
-
-        for (int i=offset; i>-1; i--){
-            char c = s.charAt(i);
-            char p = i==0 ? ' ' : s.charAt(i-1);
-
-
-            if (c=='}' || c==';'){
-                boolean insideComment = false;
-                for (int j=i-1; j>-1; j--){
-                    c = s.charAt(j);
-                    p = j==0 ? ' ' : s.charAt(j-1);
-
-                    if (c=='\n'){
-                        break;
-                    }
-
-                    if (c=='/' && p=='/'){
-                        insideComment = true;
-                    }
-
-                    if (c=='*' && p=='/'){
-                        //insideComment = true;
-                    }
-                }
-
-                if (!insideComment){
-                    return -1;
-                }
-            }
-
-            if (c=='/' && p=='*'){
-
-                boolean insideComment = false;
-                for (int j=i-1; j>-1; j--){
-                    c = s.charAt(j);
-                    p = j==0 ? ' ' : s.charAt(j-1);
-
-                    if (c=='\n'){
-                        break;
-                    }
-
-                    if (c=='/' && p=='/'){
-                        insideComment = true;
-                    }
-
-                    if (c=='*' && p=='/'){
-                        //insideComment = true;
-                    }
-                }
-
-                if (!insideComment){
-                    return i+1;
-                }
-            }
-
-
-        }
-        return -1;
-    }
-
-
-  //**************************************************************************
-  //** parseMethod
-  //**************************************************************************
-    private static Method parseMethod(String fn, Comment comment, String ext){
-
-
-      //Parse comments separating description from annotations
-        String description = null;
-        ArrayList<String> annotations = new ArrayList<>();
-        if (comment!=null){
-            description = comment.getDescription();
-            annotations = comment.getAnnotations();
-        }
-
-
-        if (ext.equals("java")){
-            boolean isStatic = false; //only for java
-
-            String member = fn;
-            for (String str : new String[]{"public","private","protected","abstract","static","final"}){
-                if (member.startsWith(str + " ")){
-                    member = member.substring(str.length()+1);
-                    if (str.equals("static")) isStatic = true;
-                }
-            }
-
-
-            int a = member.indexOf("(");
-            int b = -1; //member.indexOf(")");
-            int numParentheses = 1;
-            for (int i=a+1; i<member.length(); i++){
-                char c = member.charAt(i);
-                if (c=='(') numParentheses++;
-                else if (c==')') numParentheses--;
-                if (numParentheses==0){
-                    b=i;
-                    break;
-                }
-            }
-
-            if (a>-1 && b>-1){
-                String parameters = member.substring(a+1,b).trim();
-                member = member.substring(0, a).trim();
-
-              //Get method
-                Method method;
-                int idx = member.lastIndexOf(" ");
-                if (idx>-1){
-                    String returnType = member.substring(0, idx).trim();
-                    String name = member.substring(idx).trim();
-                    method = new Method(name);
-                    method.setStatic(isStatic);
-                    method.setReturnType(returnType);
-                }
-                else{
-                    method = new Constructor(member);
-                }
-
-              //Set description
-                method.setDescription(description);
-
-
-              //Add parameters
-                if (!parameters.isEmpty()){
-
-                    ArrayList<String> params = new ArrayList<>();
-                    StringBuilder str = new StringBuilder();
-                    int numBrackets = 0;
-                    for (int i=0; i<parameters.length(); i++){
-                        char c = parameters.charAt(i);
-                        if (c==','){
-                            if (numBrackets==0){
-                                params.add(str.toString());
-                                str = new StringBuilder();
-                            }
-                            else{
-                                str.append(c);
-                            }
-                        }
-                        else{
-                            if (c=='<'){
-                                numBrackets++;
-                            }
-                            else if (c=='>'){
-                                numBrackets--;
-                            }
-                            str.append(c);
-                        }
-                    }
-                    params.add(str.toString());
-
-
-
-                    for (String param : params){
-                        param = param.trim();
-
-                        idx = param.lastIndexOf(" ");
-                        if (idx==-1){
-                          //Check if we have a spread operator
-                            idx = param.indexOf("...");
-                            if (idx>-1){
-                                String t = param.substring(0, idx);
-                                String n = param.substring(idx+3);
-                                param = t + "... " + n;
-                                idx = param.indexOf(" ");
-                            }
-                        }
-
-                        String paramName = param.substring(idx).trim();
-                        String paramType = param.substring(0, idx).trim();
-                        idx = paramType.lastIndexOf(" ");
-                        if (idx>-1) paramType = paramType.substring(idx).trim();
-
-                        Parameter parameter = new Parameter(paramName);
-                        parameter.setType(paramType);
-                        method.addParameter(parameter);
-
-                        for (String annotation : annotations){
-                            if (annotation.startsWith("@param " + paramName + " ")){
-                                annotation = annotation.substring(("@param " + paramName).length()+1);
-                                parameter.setDescription(annotation);
-                                break;
-                            }
-                        }
-
-                    }
-                }
-
-                return method;
-            }
-            else{
-                //class or property
-            }
-
-        }
-        else if (ext.equals("js")){
-            int a = fn.indexOf("(");
-            int b = fn.indexOf(")");
-            if (a>-1 && b>-1){
-
-
-              //Create method
-                int idx = fn.indexOf("=");
-                if (idx==-1) idx = fn.indexOf(":");
-                String name = fn.substring(0, idx);
-                Method method = new Method(name);
-
-
-              //Set description
-                method.setDescription(description);
-
-
-              //Add parameters
-                String parameters = fn.substring(a+1,b).trim();
-                if (!parameters.isEmpty()){
-                    for (String param : parameters.split(",")){
-                        param = param.trim();
-
-
-                        Parameter parameter = new Parameter(param);
-                        method.addParameter(parameter);
-
-                        for (String annotation : annotations){
-                            if (annotation.startsWith("@param " + param + " ")){
-                                annotation = annotation.substring(("@param " + param).length()+1);
-                                parameter.setDescription(annotation);
-                                break;
-                            }
-                        }
-
-                    }
-                }
-
-                return method;
-
-
-            }
-        }
-
-
-//            System.out.println(method);
-//            System.out.println("  +" + methodName);
-//            System.out.println("  -" + parameters);
-//            System.out.println("   returns " + returnType);
-
-
-
-
-        return null;
+        String word = code.toString().trim();
+        if (word.isBlank()) return null;
+        return new Word(word, i, lastComment, lastCommentIndex);
     }
 
 
@@ -1084,6 +879,8 @@ public class Parser {
   //**************************************************************************
   //** getClasses
   //**************************************************************************
+  /** Used to extract classes from a given block of JavaScript
+   */
     private static ArrayList<Class> getClasses(String s){
         ArrayList<Class> classes = new ArrayList<>();
 
@@ -1169,6 +966,8 @@ public class Parser {
   //**************************************************************************
   //** getFunctions
   //**************************************************************************
+  /** Used to find JavaScript functions in a given string
+   */
     private static ArrayList<Method> getFunctions(String s){
         ArrayList<Method> functions = new ArrayList<>();
 
@@ -1232,7 +1031,7 @@ public class Parser {
   //**************************************************************************
   //** getFunctionName
   //**************************************************************************
-  /** Returns the name of a javascript function found in the given word or
+  /** Returns the name of a JavaScript function found in the given word or
    *  previous words, along with any comments. Assumes function name is
    *  defined as a variable (e.g. "fn = function(a, b){};") or as property
    *  (e.g. "fn: function(a, b){}").
@@ -1322,45 +1121,88 @@ public class Parser {
   //** getParameters
   //**************************************************************************
     private static ArrayList<Parameter> getParameters(String s, ArrayList<String> annotations){
+        ArrayList<Parameter> parameters = new ArrayList<>();
 
         s = s.trim();
         if (s.startsWith("(") && s.endsWith(")")) s = s.substring(1, s.length()-1).trim();
 
-        ArrayList<String> params = new ArrayList<>();
 
 
+      //Get words (skips comments)
+        StringBuilder words = new StringBuilder();
         int i=0;
         Word word;
         while ((word = getNextWord(s, i))!=null){
-
-            String str = word.toString().trim();
-            if (!str.equals(",")){
-                if (str.startsWith(",")) str = str.substring(1).trim();
-                if (str.endsWith(",")) str = str.substring(0, str.length()-1);
-                if (str.contains(",")){
-                    String[] arr = str.split(",");
-                    for (String p : arr) params.add(p.trim());
-                }
-                else{
-                    params.add(str.trim());
-                }
+            String w = word.toString();
+            if (!w.isEmpty()){
+                if (i>0) words.append(" ");
+                words.append(word.toString());
             }
-
             i = word.end+1;
         }
 
+        if (words.length()==0) return parameters;
 
 
-        ArrayList<Parameter> parameters = new ArrayList<>();
-        for (String param : params){
-            Parameter parameter = new Parameter(param);
-            for (String annotation : annotations){
-                if (annotation.startsWith("@param " + param + " ")){
-                    annotation = annotation.substring(("@param " + param).length()+1);
-                    parameter.setDescription(annotation);
-                    break;
+
+      //Get parameters
+        ArrayList<String> params = new ArrayList<>();
+        i=0;
+        int numBrackets = 0;
+        StringBuilder currWord = new StringBuilder();
+        for (; i<words.length(); i++){
+            boolean append = true;
+            char c = words.charAt(i);
+            if (c=='<') numBrackets++;
+            else if (c=='>') numBrackets--;
+            else{
+                if (c==',' && numBrackets==0){
+                    params.add(currWord.toString().trim());
+                    currWord = new StringBuilder();
+                    append = false;
                 }
             }
+            if (append) currWord.append(c);
+        }
+        params.add(currWord.toString().trim());
+
+
+      //Parse parameters
+        for (String str : params){
+            if (str.isEmpty()) continue;
+
+
+          //Check if we have a spread operator (Java only)
+            int idx = str.lastIndexOf(" ");
+            if (idx==-1){
+                idx = str.indexOf("...");
+                if (idx>-1){
+                    String t = str.substring(0, idx);
+                    String n = str.substring(idx+3);
+                    str = t + "... " + n;
+                    idx = str.lastIndexOf(" ");
+                }
+            }
+
+
+
+            String name = str.substring(idx+1);
+            if (name.isEmpty()) continue;
+
+            Parameter parameter = new Parameter(name);
+            if (idx>-1) parameter.setType(str.substring(0, idx).trim());
+
+
+            if (annotations!=null){
+                for (String annotation : annotations){
+                    if (annotation.startsWith("@param " + name + " ")){
+                        annotation = annotation.substring(("@param " + name).length()+1);
+                        parameter.setDescription(annotation);
+                        break;
+                    }
+                }
+            }
+
             parameters.add(parameter);
         }
         return parameters;
@@ -1544,7 +1386,7 @@ public class Parser {
    */
     private static void print(javaxt.io.File input) throws Exception {
         ArrayList<Class> classes = new Parser(input).getClasses();
-
+//if (true) return;
         for (Class cls : classes){
             String className = cls.getName();
             String namespace = cls.getNamespace();
@@ -1584,18 +1426,27 @@ public class Parser {
             }
 
 
+            ArrayList<Property> properties = cls.getProperties();
+            if (!properties.isEmpty()){
+                System.out.println("\r\n## Properties: ");
+                for (Property p : properties){
+                    if (p.isPublic()){
+                        printProperty(p);
+                    }
+                }
+            }
+
+
             ArrayList<Method> methods = cls.getMethods();
             if (!methods.isEmpty()){
                 System.out.println("\r\n## Methods: ");
-
                 for (Method m : methods){
-                    printMethod(m);
-                }
-
-                for (Property p : cls.getProperties()){
-                    console.log("  *" + p.getName());
+                    if (m.isPublic()){
+                        printMethod(m);
+                    }
                 }
             }
+
 
             for (Class c : cls.getClasses()){
                 if (c.isPublic()){
@@ -1657,6 +1508,25 @@ public class Parser {
             System.out.println("     " + returnType);
 
         }
+    }
+
+
+  //**************************************************************************
+  //** printProperty
+  //**************************************************************************
+    private static void printProperty(Property property){
+        String name = property.getName();
+        String description = property.getDescription();
+        String defaultValue = property.getDefaultValue();
+
+
+        System.out.println("\r\n+ " + name);
+        if (description!=null){
+            System.out.println("\r\n   - Description:\r\n     " + description);
+        }
+
+
+        System.out.println("\r\n   - Default:\r\n     " + defaultValue);
     }
 
 
