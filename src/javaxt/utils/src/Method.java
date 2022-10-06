@@ -11,6 +11,7 @@ public class Method implements Member {
     private ArrayList<Parameter> parameters;
     private boolean isDeprecated = false;
     private String deprecationMessage;
+    private Integer position;
 
     public Method(String name){
         this.name = name;
@@ -68,6 +69,14 @@ public class Method implements Member {
 
     public ArrayList<Parameter> getParameters(){
         return parameters;
+    }
+
+    public void setPosition(Integer position){
+        this.position = position;
+    }
+
+    public Integer getPosition(){
+        return position;
     }
 
     public String toString(){

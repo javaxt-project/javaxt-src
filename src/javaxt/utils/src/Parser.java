@@ -119,6 +119,7 @@ public class Parser {
                     boolean isInterface = str.contains("interface");
                     cls.setInterface(isInterface);
                     addMembers(cls, s.substring(start, end));
+                    cls.setPosition(i);
                     classes.add(cls);
 
 
@@ -218,7 +219,7 @@ public class Parser {
                         boolean isInterface = word.toString().equals("interface");
                         innerClass.setInterface(isInterface);
                         addMembers(innerClass, s.substring(start, end));
-
+                        innerClass.setPosition(nextWord.end);
                         cls.addMember(innerClass);
                     }
 
@@ -283,6 +284,7 @@ public class Parser {
                         }
                         method.setPublic(isPublic);
                         method.setDescription(comment.getDescription());
+                        method.setPosition(word.end);
                         cls.addMember(method);
 
 
@@ -386,6 +388,7 @@ public class Parser {
                             property.setType(type);
                             property.setStatic(isStatic);
                             property.setDefaultValue(defaultValue);
+                            property.setPosition(word.end);
                             cls.addMember(property);
 
 
@@ -922,11 +925,13 @@ public class Parser {
                         cls.setNamespace(namespace);
                         Comment comment = parseComment(fn.get("comment").toString());
                         cls.setDescription(comment.getDescription());
+                        cls.setPosition(i);
                         classes.add(cls);
 
 
                       //Add constructor
                         Constructor contructor = new Constructor(functionName);
+                        contructor.setPosition(start);
                         for (Parameter parameter : getParameters(params, comment.getAnnotations())){
                             contructor.addParameter(parameter);
                         }
@@ -986,6 +991,7 @@ public class Parser {
                 Method function = new Method(functionName);
                 function.setDescription(comment.getDescription());
                 function.setPublic(fn.get("isPublic").toBoolean());
+                function.setPosition(word.end);
                 functions.add(function);
 
 
@@ -1269,6 +1275,7 @@ public class Parser {
                 String key = prevWord.toString().trim();
                 Config config = new Config(key);
                 config.setDescription(parseComment(prevWord.lastComment).getDescription());
+                config.setPosition(prevWord.end);
                 arr.add(config);
 
               //Get config value and update i
@@ -1286,6 +1293,7 @@ public class Parser {
                 String key = str.substring(0, str.length()-1);
                 Config config = new Config(key);
                 config.setDescription(parseComment(word.lastComment).getDescription());
+                config.setPosition(word.end);
                 arr.add(config);
 
 
@@ -1299,6 +1307,7 @@ public class Parser {
                 String key = prevWord.toString().trim();
                 Config config = new Config(key);
                 config.setDescription(parseComment(prevWord.lastComment).getDescription());
+                config.setPosition(prevWord.end);
                 arr.add(config);
 
 
@@ -1328,6 +1337,7 @@ public class Parser {
 
                 Config config = new Config(key);
                 config.setDescription(parseComment(word.lastComment).getDescription());
+                config.setPosition(word.end);
                 arr.add(config);
 
               //Get config value and update i

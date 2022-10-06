@@ -14,6 +14,7 @@ public class Class implements Member, Comparable {
     private ArrayList<String> extensions;
     private ArrayList<String> interfaces;
     private ArrayList<Config> config;
+    private Integer position;
 
 
     public Class(String name){
@@ -147,6 +148,14 @@ public class Class implements Member, Comparable {
 
     public Class getParent(){
         return parent;
+    }
+
+    public void setPosition(Integer position){
+        this.position = position;
+    }
+
+    public Integer getPosition(){
+        return position;
     }
 
     public JSONObject toJson(){

@@ -1,12 +1,13 @@
 package javaxt.utils.src;
 import java.util.*;
 
-public class Config {
+public class Config implements Member {
 
     private String name;
     private String description;
     private String defaultValue;
     private ArrayList<Config> config;
+    private Integer position;
 
     public Config(String name){
         this.name = name;
@@ -43,5 +44,13 @@ public class Config {
 
     public ArrayList<Config> getConfig(){
         return config;
+    }
+
+    public void setPosition(Integer position){
+        this.position = position;
+    }
+
+    public Integer getPosition(){
+        return position;
     }
 }

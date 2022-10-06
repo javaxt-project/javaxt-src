@@ -8,6 +8,7 @@ public class Property implements Member {
     private String defaultValue;
     private boolean isStatic = false;
     private boolean isPublic = true;
+    private Integer position;
 
     public Property(String name){
         this.name = name;
@@ -55,6 +56,14 @@ public class Property implements Member {
 
     public String getDefaultValue(){
         return defaultValue;
+    }
+
+    public void setPosition(Integer position){
+        this.position = position;
+    }
+
+    public Integer getPosition(){
+        return position;
     }
 
     public JSONObject toJson(){
