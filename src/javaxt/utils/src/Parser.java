@@ -145,6 +145,9 @@ public class Parser {
 
         if (ext.equals("js") || ext.equals("javascript")){
             classes = getClasses(s);
+            if (classes.isEmpty()){
+                classes = getStaticFunctions(s);
+            }
         }
         else if (ext.equals("java")) {
             classes = new ArrayList<>();
@@ -948,11 +951,18 @@ public class Parser {
   //**************************************************************************
   //** getClasses
   //**************************************************************************
-  /** Used to extract classes from a given block of JavaScript
+  /** Used to extract classes from a given block of JavaScript. This parser
+   *  actually looks for functions with nested functions that javaxt and other
+   *  libraries use to represent a class. Example:
+   <pre>
+    javaxt.dhtml.Window = function(parent, config) {
+        this.open = function(){};
+        this.close = function(){};
+    }
+   </pre>
    */
     private static ArrayList<Class> getClasses(String s){
         ArrayList<Class> classes = new ArrayList<>();
-        ArrayList<JSONObject> orphanedFunctions = new ArrayList<>();
 
         int i=0;
         Word word, p1 = null, p2 = null;
@@ -979,7 +989,7 @@ public class Parser {
 
                 if (fn!=null){
                     String functionName = fn.get("name").toString();
-                    if (functionName.contains(".")){ //javaxt-style class
+                    if (functionName.contains(".")){ //function with a namespace
 
                       //Update functionName
                         String namespace = functionName.substring(0, functionName.lastIndexOf("."));
@@ -1018,11 +1028,6 @@ public class Parser {
                         }
 
                     }
-                    else{
-
-                        //TODO: add static functions to anonymous class (e.g. Utils.js)
-
-                    }
                 }
 
                 i = end+1;
@@ -1034,6 +1039,116 @@ public class Parser {
             p1 = word;
         }
 
+
+        return classes;
+    }
+
+
+  //**************************************************************************
+  //** getStaticFunctions
+  //**************************************************************************
+  /** Used to extract static functions from a given block of JavaScript. This
+   *  parser looks for functions that are encapsulated in a property with a
+   *  namespace. Example:
+   <pre>
+    javaxt.dhtml.utils = {
+        isString: function(obj){};
+        isNumber: function(obj){};
+    }
+   </pre>
+   */
+    private static ArrayList<Class> getStaticFunctions(String s){
+        ArrayList<Class> classes = new ArrayList<>();
+
+        int i=0;
+        Word word, p1 = null, p2 = null;
+        while ((word = getNextWord(s, i))!=null){
+
+            String str = word.toString();
+            if (str.contains("{")){
+
+
+              //Find the position of the start and end brackets
+                int start = getStartBacket(s, i, '{');
+                int end = getEndBacket(s, start, '{');
+
+
+                if (end==-1){
+                    i = word.end+1;
+                    continue;
+                }
+                else{
+                    i = end+1;
+                }
+
+
+                String body = s.substring(start, end);
+
+
+                ArrayList<Method> methods = getFunctions(body);
+                if (!methods.isEmpty()){
+
+
+
+                  //Try to find the name of the property holding these functions
+                    ArrayList<Word> words = new ArrayList<>();
+                    if (p1!=null){
+                        words.add(p1);
+                        if (p2!=null) words.add(p2);
+                    }
+                    int idx = str.indexOf("{");
+                    str = str.substring(0, idx).trim();
+                    idx = str.lastIndexOf("=");
+                    if (idx==-1){
+                        word = words.remove(0);
+                        str = word.toString();
+                        idx = str.lastIndexOf("=");
+                        if (idx==-1) continue;
+                    }
+                    str = str.substring(0, idx).trim();
+                    if (str.isEmpty()){
+                        word = words.remove(0);
+                        str = word.toString();
+                    }
+
+
+
+                  //Create a class and add members
+                    if (str.contains(".")){ //property with a namespace
+
+
+                      //Get namespace and use the last key in the property as
+                      //the class name
+                        String namespace = str.substring(0, str.lastIndexOf("."));
+                        str = str.substring(namespace.length()+1);
+
+
+                      //Create class
+                        Class cls = new Class(str);
+                        cls.setNamespace(namespace);
+
+
+                        Comment comment = parseComment(word.lastComment);
+                        cls.setDescription(comment.getDescription());
+
+
+                        for (Method method : methods){
+                            cls.addMember(method);
+                        }
+                        classes.add(cls);
+
+
+                    }
+
+                }
+            }
+            else{
+                i = word.end+1;
+            }
+
+            p2 = p1;
+            p1 = word;
+        }
 
         return classes;
     }
