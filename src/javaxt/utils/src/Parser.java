@@ -23,14 +23,80 @@ public class Parser {
   //**************************************************************************
     public static void main(String[] arr) throws Exception {
         HashMap<String, String> args = console.parseArgs(arr);
-        java.io.File input = new java.io.File(args.get("-input"));
-        //java.io.File output = new java.io.File(args.get("-output"));
 
+      //Get input file or directory
+        String path = args.get("-input");
+        if (path==null){
+            if (arr.length>0){
+                path = arr[0];
+            }
+            else{
+                System.out.println("-input file or directory is required");
+                return;
+            }
+        }
+
+
+
+      //Get test file as needed
+        String expectedOutput = null;
+        String test = args.get("-test");
+        if (test!=null) expectedOutput = new javaxt.io.File(test).getText();
+
+
+
+      //Generate output
+        java.io.File input = new java.io.File(path);
         if (input.isFile()){
-            print(new javaxt.io.File(input));
+            String output = parse(new javaxt.io.File(input));
+            if (expectedOutput==null){
+                System.out.print(output);
+            }
+            else{
+                if (output.equals(expectedOutput)){
+                    System.out.println(input + " [PASS]");
+                }
+                else{
+                    System.out.println(input + " [FAILED] <------");
+                }
+            }
         }
         else{
+            String[] filter = new String[]{"*.js", "*.java"};
+            for (javaxt.io.File file : new javaxt.io.Directory(input).getFiles(filter, true)){
+                String output = parse(file);
+                if (expectedOutput==null){
+                    System.out.print(output);
+                }
+                else{
+                    String t = expectedOutput.substring(0, output.length());
+                    if (t.equals(output)){
+                        System.out.println(file + " [PASS]");
+                        expectedOutput = expectedOutput.substring(output.length());
+                    }
+                    else{
+                        System.out.println(file + " [FAILED] <------");
+                        for (int i=0; i<output.length(); i++){
+                            char a = output.charAt(i);
+                            char b = expectedOutput.charAt(i);
+                            if (a!=b){
+                                int start = i-50;
+                                if (start<0) start = 0;
+                                int end = Math.min(i + 50, output.length());
+                                //, expectedOutput.length()
 
+
+                                System.out.println(output.substring(start, i) + "|" + output.substring(i, end));
+                                System.out.println("--------------------------------------------");
+                                System.out.println(expectedOutput.substring(start, i) + "|" + expectedOutput.substring(i, end));
+
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
         }
     }
 
@@ -886,7 +952,7 @@ public class Parser {
    */
     private static ArrayList<Class> getClasses(String s){
         ArrayList<Class> classes = new ArrayList<>();
-
+        ArrayList<JSONObject> orphanedFunctions = new ArrayList<>();
 
         int i=0;
         Word word, p1 = null, p2 = null;
@@ -950,6 +1016,11 @@ public class Parser {
                                 cls.addMember(function);
                             }
                         }
+
+                    }
+                    else{
+
+                        //TODO: add static functions to anonymous class (e.g. Utils.js)
 
                     }
                 }
@@ -1394,54 +1465,55 @@ public class Parser {
   /** Used to display all the classes, methods and properties found in a given
    *  file
    */
-    private static void print(javaxt.io.File input) throws Exception {
+    private static String parse(javaxt.io.File input) throws Exception {
+
+        Printer printer = new Printer();
         ArrayList<Class> classes = new Parser(input).getClasses();
-//if (true) return;
         for (Class cls : classes){
             String className = cls.getName();
             String namespace = cls.getNamespace();
             boolean isInterface = cls.isInterface();
             if (namespace!=null) className = namespace + "." + className;
-            System.out.println("-----------------------------------");
-            System.out.println("- " + className + (isInterface? " (Interface)" : ""));
-            System.out.println("-----------------------------------");
+            printer.println("-----------------------------------");
+            printer.println("- " + className + (isInterface? " (Interface)" : ""));
+            printer.println("-----------------------------------");
             String description = cls.getDescription();
-            if (description!=null) System.out.println(description);
+            if (description!=null) printer.println(description);
 
             ArrayList<String> extensions = cls.getSuper();
             if (!extensions.isEmpty()){
-                System.out.print("\r\nExtends");
+                printer.print("\r\nExtends");
                 for (String ext : extensions){
-                    System.out.print(" " + ext);
+                    printer.print(" " + ext);
                 }
-                System.out.println("\r\n");
+                printer.println("\r\n");
             }
 
 
             ArrayList<Constructor> contructors = cls.getConstructors();
             if (!contructors.isEmpty()){
-                System.out.println("\r\n## Constructors: ");
+                printer.println("\r\n## Constructors: ");
                 for (Constructor c : contructors){
-                    printMethod(c);
+                    printMethod(c, printer);
                 }
             }
 
 
             ArrayList<Config> config = cls.getConfig();
             if (!config.isEmpty()){
-                System.out.println("\r\n## Config: ");
+                printer.println("\r\n## Config: ");
                 for (Config c : config){
-                    printConfig(c);
+                    printConfig(c, printer);
                 }
             }
 
 
             ArrayList<Property> properties = cls.getProperties();
             if (!properties.isEmpty()){
-                System.out.println("\r\n## Properties: ");
+                printer.println("\r\n## Properties: ");
                 for (Property p : properties){
                     if (p.isPublic()){
-                        printProperty(p);
+                        printProperty(p, printer);
                     }
                 }
             }
@@ -1449,10 +1521,10 @@ public class Parser {
 
             ArrayList<Method> methods = cls.getMethods();
             if (!methods.isEmpty()){
-                System.out.println("\r\n## Methods: ");
+                printer.println("\r\n## Methods: ");
                 for (Method m : methods){
                     if (m.isPublic()){
-                        printMethod(m);
+                        printMethod(m, printer);
                     }
                 }
             }
@@ -1460,23 +1532,24 @@ public class Parser {
 
             for (Class c : cls.getClasses()){
                 if (c.isPublic()){
-                    console.log(" +" + c.getName());
+                    printer.println(" +" + c.getName());
                 }
             }
 
 
-            System.out.println("-----------------------------------");
-            System.out.println("\r\n");
+            printer.println("-----------------------------------");
+            printer.println("\r\n");
 
         }
 
+        return printer.toString();
     }
 
 
   //**************************************************************************
   //** printMethod
   //**************************************************************************
-    private static void printMethod(Method m){
+    private static void printMethod(Method m, Printer printer){
         String methodName = m.getName();
         String returnType = m.getReturnType();
 
@@ -1493,15 +1566,15 @@ public class Parser {
         }
 
 
-        System.out.println("\r\n+ " + methodName + "(" + params + ")");
+        printer.println("\r\n+ " + methodName + "(" + params + ")");
         String description = m.getDescription();
         if (description!=null){
-            System.out.println("\r\n   - Description:\r\n     " + description);
+            printer.println("\r\n   - Description:\r\n     " + description);
         }
 
 
         if (!parameters.isEmpty()){
-            System.out.println("\r\n   - Parameters: ");
+            printer.println("\r\n   - Parameters: ");
             for (Parameter p : parameters){
                 String t = p.getType();
                 String d = p.getDescription();
@@ -1509,13 +1582,13 @@ public class Parser {
                 if (t!=null) param += " (" + p.getType() + ")";
                 if (d!=null) param += ": " + d;
 
-                System.out.println("     * " + param);
+                printer.println("     * " + param);
             }
         }
 
         if (returnType!=null){
-            System.out.println("\r\n   - Returns:");
-            System.out.println("     " + returnType);
+            printer.println("\r\n   - Returns:");
+            printer.println("     " + returnType);
 
         }
     }
@@ -1524,26 +1597,26 @@ public class Parser {
   //**************************************************************************
   //** printProperty
   //**************************************************************************
-    private static void printProperty(Property property){
+    private static void printProperty(Property property, Printer printer){
         String name = property.getName();
         String description = property.getDescription();
         String defaultValue = property.getDefaultValue();
 
 
-        System.out.println("\r\n+ " + name);
+        printer.println("\r\n+ " + name);
         if (description!=null){
-            System.out.println("\r\n   - Description:\r\n     " + description);
+            printer.println("\r\n   - Description:\r\n     " + description);
         }
 
 
-        System.out.println("\r\n   - Default:\r\n     " + defaultValue);
+        printer.println("\r\n   - Default:\r\n     " + defaultValue);
     }
 
 
   //**************************************************************************
   //** printConfig
   //**************************************************************************
-    private static void printConfig(Config config){
+    private static void printConfig(Config config, Printer printer){
         String name = config.getName();
         String description = config.getDescription();
         String defaultValue = config.getDefaultValue();
@@ -1553,22 +1626,43 @@ public class Parser {
 
 
 
-        System.out.println("\r\n+ " + name);
+        printer.println("\r\n+ " + name);
         if (description!=null){
-            System.out.println("\r\n   - Description:\r\n     " + description);
+            printer.println("\r\n   - Description:\r\n     " + description);
         }
 
         if (defaultValue!=null){
-            System.out.println("\r\n   - Default:\r\n     " + defaultValue);
+            printer.println("\r\n   - Default:\r\n     " + defaultValue);
         }
         else{
             for (Config c : arr){
                 description = config.getDescription();
-                System.out.println("\r\n   + " + c.getName());
+                printer.println("\r\n   + " + c.getName());
                 if (description!=null){
-                    System.out.println("\r\n      - Description:\r\n     " + description);
+                    printer.println("\r\n      - Description:\r\n     " + description);
                 }
             }
+        }
+    }
+
+
+  //**************************************************************************
+  //** Printer Class
+  //**************************************************************************
+    private static class Printer {
+        private StringBuilder out;
+        public Printer(){
+            out = new StringBuilder();
+        }
+        public void println(String line){
+            out.append(line);
+            out.append("\r\n");
+        }
+        public void print(String line){
+            out.append(line);
+        }
+        public String toString(){
+            return out.toString();
         }
     }
 
